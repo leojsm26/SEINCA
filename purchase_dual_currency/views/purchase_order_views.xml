@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="purchase_order_form_dual_currency_view" model="ir.ui.view">
+    <field name="name">purchase.order.form.dual.currency</field>
+    <field name="model">purchase.order</field>
+    <field name="inherit_id" ref="purchase.purchase_order_form"/>
+    <field name="arch" type="xml">
+
+      <xpath expr="//group[@class='oe_subtotal_footer']" position="before">
+        <group class="oe_subtotal_footer oe_left" style="margin-top: -10px; min-width: 320px;">
+        <field name="currency_id_dif" string="Moneda Ref." readonly="1"/>
+        <field name="tax_today" string="Tasa"/>
+        <field name="amount_untaxed_dual"
+                string="Base Imponible"
+                widget="monetary"
+                options="{'currency_field': 'currency_id_dif'}"/>
+        <field name="amount_tax_dual"
+                string="Impuesto"
+                widget="monetary"
+                options="{'currency_field': 'currency_id_dif'}"/>
+        <field name="amount_total_dual"
+                string="Total"
+                widget="monetary"
+                options="{'currency_field': 'currency_id_dif'}"/>
+        </group>
+        </xpath>
+
+
+    </field>
+  </record>
+</odoo>

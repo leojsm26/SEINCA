@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_account_invoice_price_check_wizard.account,invoice.price.check.wizard,model_account_invoice_price_check_wizard,base.group_user,1,1,1,1
+access_account_move_price_approval_user,account.move.price.approval user,model_account_move_price_approval,base.group_user,1,0,1,0
+access_account_move_price_approval_manager,account.move.price.approval manager,model_account_move_price_approval,purchase_REF.group_price_approval,1,1,0,0
+access_account_move_price_approval_line_manager,account.move.price.approval.line manager,model_account_move_price_approval_line,purchase_REF.group_price_approval,1,0,0,0
+access_price_approval,access_price_approval,model_account_move_price_approval,account.group_account_manager,1,1,1,1
+access_price_approval_line,access_price_approval_line,model_account_move_price_approval_line,account.group_account_manager,1,1,1,1

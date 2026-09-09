@@ -1,0 +1,23 @@
+<!-- Heredamos la vista de líneas de factura -->
+<record id="view_invoice_line_form_ref" model="ir.ui.view">
+    <field name="name">account.move.line.ref.form</field>
+    <field name="model">account.move.line</field>
+    <field name="inherit_id" ref="account.view_move_line_form"/>
+    <field name="arch" type="xml">
+
+        <!-- Ubicamos los campos REF después del price_unit y price_subtotal -->
+        <xpath expr="//field[@name='price_unit']" position="after">
+            <field name="move_type" invisible="1"/>
+            <field name="price_unit_ref" 
+                   readonly="move_type != 'in_invoice'" 
+                   string="REF Unit"/>
+        </xpath>
+
+        <xpath expr="//field[@name='price_subtotal']" position="after">
+            <field name="price_subtotal_ref" 
+                   readonly="move_type != 'in_invoice'" 
+                   string="REF Subtotal"/>
+        </xpath>
+
+    </field>
+</record>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 
+        Heredamos la vista de Purchase Order Lines en modo tree, 
+        y añadimos el campo 'ref' justo después de 'price_subtotal'. 
+    -->
+    <record id="view_purchase_order_line_tree_inherit_ref" model="ir.ui.view">
+        <field name="name">purchase.order.line.tree.ref.inherit</field>
+        <field name="model">purchase.order.line</field>
+        <field name="inherit_id" ref="purchase.view_purchase_order_line_tree"/>
+        <field name="arch" type="xml">
+            <!-- Buscamos exactamente la columna Subtotal -->
+            <xpath expr="//field[@name='price_subtotal']" position="after">
+                <!-- Insertamos nuestro campo justo a continuación -->
+                <field name="ref" string="REF ($)" digits="(16, 4)"/>
+                <field name="ref_unit" string="REF Unit ($)" digits="(16, 4)"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

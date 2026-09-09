@@ -1,0 +1,7 @@
+<odoo>
+    <!-- Grupo de aprobación -->
+    <record id="group_price_approval" model="res.groups">
+        <field name="name">Autorización Precio Mayor</field>
+        <field name="category_id" ref="base.module_category_accounting"/>
+    </record>
+</odoo>

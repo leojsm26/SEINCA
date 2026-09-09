@@ -1,0 +1,78 @@
+<odoo>
+    <!-- Vista árbol -->
+    <record id="view_price_approval_tree" model="ir.ui.view">
+        <field name="name">account.move.price.approval.tree</field>
+        <field name="model">account.move.price.approval</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="move_id"/>
+                <field name="approver_id"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Vista formulario -->
+    <record id="view_price_approval_form" model="ir.ui.view">
+        <field name="name">account.move.price.approval.form</field>
+        <field name="model">account.move.price.approval</field>
+        <field name="arch" type="xml">
+            <form string="Autorización de Precio">
+                <header>
+                    <button name="action_send" type="object" string="Enviar" invisible="state != 'draft' or not can_send"
+                            class="btn-secondary"/>
+                    <button name="action_approve" type="object" string="Aprobar" invisible="state != 'draft'" class="btn-primary"
+                            groups="purchase_REF.group_price_approval"/>
+                    <button name="action_reject" type="object" string="Rechazar" invisible="state != 'draft'" class="btn-secondary"
+                            groups="purchase_REF.group_price_approval"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,approved,rejected"/>
+                </header>
+                <sheet>
+                    <group>
+                        <field name="move_id"/>
+                        <field name="approver_id"/>
+                        <!-- campo de control oculto -->
+                        <field name="can_send" invisible="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Detalles">
+                            <field name="line_ids">
+                                <tree create="false" edit="false" delete="false">
+                                     <field name="product_id" string="Producto"/>
+                                     <field name="purchase_price"/>
+                                     <field name="invoice_price"/>
+                                 </tree>
+                             </field>
+                         </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search view con filtros por estado -->
+    <record id="view_price_approval_search" model="ir.ui.view">
+        <field name="name">account.move.price.approval.search</field>
+        <field name="model">account.move.price.approval</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="move_id"/>
+                <filter name="por_aprobar" string="Por aprobar" domain="[('state','=','draft')]"/>
+                <filter name="aprobado" string="Aprobado" domain="[('state','=','approved')]"/>
+                <filter name="rechazado" string="Rechazado" domain="[('state','=','rejected')]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Acción y menú -->
+    <record id="action_price_approval" model="ir.actions.act_window">
+        <field name="name">Autorizaciones de Precio</field>
+        <field name="res_model">account.move.price.approval</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_price_approval_search"/>
+    </record>
+
+    <menuitem id="menu_price_approval" name="Autorizaciones de Precio"
+              parent="account.menu_finance"
+              action="action_price_approval"/>
+</odoo>
