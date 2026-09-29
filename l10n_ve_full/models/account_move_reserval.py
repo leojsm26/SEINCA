@@ -67,17 +67,16 @@ class AccountMoveReversalInherit(models.TransientModel):
                     orig = new_move.reversed_entry_id
                     fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
                     tasa_orig = orig.tax_today or (hasattr(orig, '_get_tasa_usd_by_date') and orig._get_tasa_usd_by_date(fecha_orig, orig.company_id))
-                    if tasa_orig:
-                        new_move.with_context(skip_tax_today_update=True).write({
-                            'tax_today': tasa_orig,
-                            'tax_today_edited': True,
-                        })
+                    vals_to_write = {}
+                    if tasa_orig and new_move.tax_today != tasa_orig:
+                        vals_to_write['tax_today'] = tasa_orig
+                        vals_to_write['tax_today_edited'] = True
                     if orig.currency_id and new_move.currency_id != orig.currency_id:
-                        new_move.currency_id = orig.currency_id
-                    if hasattr(new_move, 'trm_invoice'):
-                        new_move.trm_invoice = True
-                    if hasattr(new_move, 'action_recalcular_campos_duales'):
-                        new_move.action_recalcular_campos_duales()
+                        vals_to_write['currency_id'] = orig.currency_id.id
+                    if hasattr(new_move, 'trm_invoice') and not getattr(new_move, 'trm_invoice', False):
+                        vals_to_write['trm_invoice'] = True
+                    if vals_to_write:
+                        new_move.with_context(skip_tax_today_update=True).write(vals_to_write)
 
             if new_moves.state != 'draft':
                 new_moves.already_posted_iva()

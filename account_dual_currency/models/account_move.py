@@ -261,25 +261,16 @@ class AccountMove(models.Model):
                (orig_move.move_type == 'in_invoice' and rev_move.move_type == 'in_refund'):
                 fecha_orig = orig_move._fecha_para_tax_today() if hasattr(orig_move, '_fecha_para_tax_today') else (orig_move.invoice_date or orig_move.date)
                 tasa_orig = orig_move.tax_today or orig_move._get_tasa_usd_by_date(fecha_orig, orig_move.company_id)
-                if tasa_orig:
-                    rev_move.tax_today = tasa_orig
-                    rev_move.tax_today_edited = True
+                vals_to_write = {}
+                if tasa_orig and rev_move.tax_today != tasa_orig:
+                    vals_to_write['tax_today'] = tasa_orig
+                    vals_to_write['tax_today_edited'] = True
                 if orig_move.currency_id and rev_move.currency_id != orig_move.currency_id:
-                    rev_move.currency_id = orig_move.currency_id
-                if hasattr(rev_move, 'trm_invoice'):
-                    rev_move.trm_invoice = True
-
-                for line in rev_move.line_ids:
-                    line.tax_today = tasa_orig
-                    line._compute_currency_rate()
-                    if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
-                        if 'ref_unit' in line._fields and tasa_orig > 0:
-                            line.ref_unit = round(line.price_unit / tasa_orig, 2)
-                            line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
-                    line._debit_usd()
-                    line._credit_usd()
-                    line._compute_balance_usd()
-                rev_move._amount_all_usd()
+                    vals_to_write['currency_id'] = orig_move.currency_id.id
+                if hasattr(rev_move, 'trm_invoice') and not getattr(rev_move, 'trm_invoice', False):
+                    vals_to_write['trm_invoice'] = True
+                if vals_to_write:
+                    rev_move.with_context(skip_tax_today_update=True).write(vals_to_write)
         return reverse_moves
     
     def action_recalcular_campos_duales(self):
@@ -416,23 +407,11 @@ class AccountMove(models.Model):
                         orig = move.reversed_entry_id
                         fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
                         tasa_orig = orig.tax_today or move._get_tasa_usd_by_date(fecha_orig, move.company_id)
-                        if tasa_orig:
-                            if move.tax_today != tasa_orig:
-                                move.with_context(skip_tax_today_update=True).write({
-                                    'tax_today': tasa_orig,
-                                    'tax_today_edited': True,
-                                })
-                            for line in move.line_ids:
-                                line.tax_today = tasa_orig
-                                line._compute_currency_rate()
-                                if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
-                                    if 'ref_unit' in line._fields and tasa_orig > 0:
-                                        line.ref_unit = round(line.price_unit / tasa_orig, 2)
-                                        line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
-                                line._debit_usd()
-                                line._credit_usd()
-                                line._compute_balance_usd()
-                            move._amount_all_usd()
+                        if tasa_orig and move.tax_today != tasa_orig:
+                            move.with_context(skip_tax_today_update=True).write({
+                                'tax_today': tasa_orig,
+                                'tax_today_edited': True,
+                            })
                     continue
 
                 # Si la tasa no se proporciona en 'vals', la calculamos por fecha inicial
@@ -483,22 +462,11 @@ class AccountMove(models.Model):
                         orig = move.reversed_entry_id
                         fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
                         tasa_orig = orig.tax_today or move._get_tasa_usd_by_date(fecha_orig, move.company_id)
-                        if tasa_orig and ('reversed_entry_id' in vals or (move.tax_today != tasa_orig and 'tax_today' not in vals)):
+                        if tasa_orig and move.tax_today != tasa_orig and 'tax_today' not in vals:
                             super(AccountMove, move.with_context(skip_tax_today_update=True)).write({
                                 'tax_today': tasa_orig,
                                 'tax_today_edited': True,
                             })
-                            for line in move.line_ids:
-                                line.tax_today = tasa_orig
-                                line._compute_currency_rate()
-                                if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
-                                    if 'ref_unit' in line._fields and tasa_orig > 0:
-                                        line.ref_unit = round(line.price_unit / tasa_orig, 2)
-                                        line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
-                                line._debit_usd()
-                                line._credit_usd()
-                                line._compute_balance_usd()
-                            move._amount_all_usd()
                     continue 
 
                 # Definir si se necesita recálculo
