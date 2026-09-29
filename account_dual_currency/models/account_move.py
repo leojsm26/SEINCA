@@ -313,6 +313,25 @@ class AccountMove(models.Model):
             }
         }
 
+    @api.model
+    def default_get(self, default_fields):
+        res = super().default_get(default_fields)
+        move_type = res.get('move_type') or self.env.context.get('default_move_type')
+        reversed_id = res.get('reversed_entry_id') or self.env.context.get('default_reversed_entry_id')
+        if move_type in ('out_refund', 'in_refund') and reversed_id:
+            orig = self.env['account.move'].browse(reversed_id)
+            if orig.exists():
+                fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                tasa_orig = orig.tax_today or self._get_tasa_usd_by_date(fecha_orig, orig.company_id)
+                if tasa_orig:
+                    res['tax_today'] = tasa_orig
+                    res['tax_today_edited'] = True
+                if orig.currency_id and 'currency_id' not in res:
+                    res['currency_id'] = orig.currency_id.id
+                if hasattr(orig, 'trm_invoice') and 'trm_invoice' not in res:
+                    res['trm_invoice'] = True
+        return res
+
     def _fecha_para_tax_today(self, vals=None):
         if (vals and vals.get('move_type') == 'entry') or (not vals and self.move_type == 'entry'):
             if vals:
@@ -323,18 +342,29 @@ class AccountMove(models.Model):
         return self.invoice_date or self.date
     
     def _get_tasa_usd_by_date(self, fecha, company=None):
+        if not fecha:
+            fecha = fields.Date.today()
         if isinstance(fecha, (fields.Date.__class__,)):
             fecha_str = fields.Date.to_string(fecha)
         else:
             fecha_str = str(fecha)
-        usd = self.env.ref('base.USD')
-        company = company or self.env.company
+        company = company or (self and hasattr(self, 'company_id') and self.company_id) or self.env.company
+        usd = (hasattr(company, 'currency_id_dif') and company.currency_id_dif) or self.env.ref('base.USD', raise_if_not_found=False) or self.env['res.currency'].search([('name', '=', 'USD')], limit=1)
+        if not usd:
+            return 1.0
         tasa = self.env['res.currency.rate'].search([
             ('currency_id', '=', usd.id),
-            ('name', '=', fecha_str),
+            ('name', '<=', fecha_str),
             ('company_id', '=', company.id)
-        ], limit=1)
-        return tasa.inverse_company_rate if tasa else 1.0
+        ], order='name desc, id desc', limit=1)
+        if not tasa:
+            tasa = self.env['res.currency.rate'].search([
+                ('currency_id', '=', usd.id),
+                ('name', '<=', fecha_str),
+            ], order='name desc, id desc', limit=1)
+        if tasa and tasa.inverse_company_rate:
+            return tasa.inverse_company_rate
+        return usd.inverse_rate if (usd and hasattr(usd, 'inverse_rate') and usd.inverse_rate) else 1.0
 
     @api.model_create_multi
     def create(self, vals_list):

@@ -18,7 +18,7 @@ class AccountMoveReversalInherit(models.TransientModel):
 
     def _prepare_default_reversal(self, move):
         default_values = super()._prepare_default_reversal(move)
-        if move.move_type in ('out_invoice', 'in_invoice'):
+        if move.move_type in ('out_invoice', 'in_invoice', 'out_refund', 'in_refund'):
             fecha_orig = move._fecha_para_tax_today() if hasattr(move, '_fecha_para_tax_today') else (move.invoice_date or move.date)
             tasa_orig = getattr(move, 'tax_today', False) or (hasattr(move, '_get_tasa_usd_by_date') and move._get_tasa_usd_by_date(fecha_orig, move.company_id))
             if tasa_orig:
@@ -28,6 +28,7 @@ class AccountMoveReversalInherit(models.TransientModel):
                 default_values['currency_id'] = move.currency_id.id
             if hasattr(move, 'trm_invoice'):
                 default_values['trm_invoice'] = True
+            default_values['reversed_entry_id'] = move.id
         return default_values
 
     def reverse_moves(self, is_modify=False):
@@ -67,8 +68,10 @@ class AccountMoveReversalInherit(models.TransientModel):
                     fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
                     tasa_orig = orig.tax_today or (hasattr(orig, '_get_tasa_usd_by_date') and orig._get_tasa_usd_by_date(fecha_orig, orig.company_id))
                     if tasa_orig:
-                        new_move.tax_today = tasa_orig
-                        new_move.tax_today_edited = True
+                        new_move.with_context(skip_tax_today_update=True).write({
+                            'tax_today': tasa_orig,
+                            'tax_today_edited': True,
+                        })
                     if orig.currency_id and new_move.currency_id != orig.currency_id:
                         new_move.currency_id = orig.currency_id
                     if hasattr(new_move, 'trm_invoice'):
