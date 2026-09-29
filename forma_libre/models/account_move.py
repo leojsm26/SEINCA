@@ -58,11 +58,7 @@ class AccountMove(models.Model):
 
             for line in move.line_ids.filtered(lambda l: l.display_type == 'product'):
                 subtotal = line.price_subtotal or 0.0
-                subtotal_usd = (
-                    getattr(line, 'subtotal_ref', 0.0)
-                    or getattr(line, 'price_subtotal_usd', 0.0)
-                    or (line.price_subtotal if move.currency_id != move.company_id.currency_id else ((line.price_subtotal / move.tax_today) if move.tax_today else 0.0))
-                )
+                subtotal_usd = getattr(line, 'price_subtotal_usd', 0.0) or 0.0
 
                 tax_list = line.tax_ids.filtered(lambda t: t.amount_type == 'percent')
 

@@ -165,7 +165,7 @@ class KsGlobalTaxInvoice(models.Model):
             amount_company_currency = rec.ks_amount_global_tax
             if rec.currency_id != rec.company_id.currency_id:
                 date = rec.date 
-                if (rec.trm_invoice or rec.move_type == 'out_refund') and rec.reversed_entry_id:
+                if rec.trm_invoice and rec.reversed_entry_id:
                     date = rec.reversed_entry_id.date
                 amount_company_currency = rec.currency_id._convert(
                     amount_company_currency,
@@ -425,12 +425,11 @@ class KsGlobalTaxInvoice(models.Model):
             inc_total = move.ks_amount_global_tax
             if move.is_invoice(include_receipts=True) and move.tax_totals_custom:
                 if calc_currency != move.currency_id:
-                    conv_date = move.reversed_entry_id.date if (move.move_type == 'out_refund' and move.reversed_entry_id) else (move.date or fields.Date.today())
                     inc_total =  move.currency_id._convert(
                             inc_total,
                             calc_currency,
                             move.company_id,
-                            conv_date
+                            move.date or fields.Date.today()
                         )
                 if not float_is_zero(inc_total + move.invoice_discount, precision_rounding=move.currency_id.rounding):
                     tax_totals = move.tax_totals_custom
