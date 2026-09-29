@@ -109,28 +109,41 @@ class AccountMove(models.Model):
             #     except Exception:
             #         _logger.exception("Error escribiendo totales USD para move %s", move.id)
 
-    @api.model
-    def create(self, vals):
+    @api.model_create_multi
+    def create(self, vals_list):
         """
-        Al crear: garantizamos que el documento nazca *sin tasa* (tax_today vacio)
+        Al crear: garantizamos que facturas nuevas nazcan *sin tasa* (tax_today vacio)
         y con montos USD a 0 (si esos campos existen).
+        EXCEPCIÓN CRÍTICA: Las notas de crédito de cliente (out_refund) con factura
+        asociada (reversed_entry_id) DEBEN conservar la tasa de cambio de la factura original
+        y sus montos calculados.
         """
-        # Si viene tax_today lo eliminamos: nacen sin tasa
-        if 'tax_today' in vals:
-            vals.pop('tax_today', None)
+        is_list = isinstance(vals_list, list)
+        items = vals_list if is_list else [vals_list]
 
-        # Si vienen campos USD en vals, inicializarlos a 0
-        for fname in ('amount_total_usd', 'amount_untaxed_usd', 'amount_tax_usd'):
-            if fname in vals:
-                vals[fname] = 0.0
+        for vals in items:
+            is_out_refund = vals.get('move_type') == 'out_refund' or (
+                not vals.get('move_type') and self.env.context.get('default_move_type') == 'out_refund'
+            )
+            reversed_id = vals.get('reversed_entry_id') or self.env.context.get('default_reversed_entry_id')
+            if is_out_refund and reversed_id:
+                orig = self.env['account.move'].browse(reversed_id)
+                if orig.exists() and orig.tax_today:
+                    vals['tax_today'] = orig.tax_today
+                    vals['tax_today_edited'] = True
+                continue
 
-        move = super().create(vals)
+            # Si viene tax_today lo eliminamos para otros documentos normales: nacen sin tasa
+            if 'tax_today' in vals:
+                vals.pop('tax_today', None)
 
-        # Aseguramos que si por alguna razón la moneda no es VEF, no rompemos nada:
-        # la política solicitada aplica a documentos creados en VEF (moneda base).
-        # No hacemos recompute aquí por diseño: se hará en write cuando venga la tasa.
-        _logger.debug("account_dual_currency_patch: move %s created without tax_today", move.id)
-        return move
+            # Si vienen campos USD en vals, inicializarlos a 0
+            for fname in ('amount_total_usd', 'amount_untaxed_usd', 'amount_tax_usd'):
+                if fname in vals:
+                    vals[fname] = 0.0
+
+        res = super().create(vals_list if is_list else items[0])
+        return res
 
     def write(self, vals):
         """
