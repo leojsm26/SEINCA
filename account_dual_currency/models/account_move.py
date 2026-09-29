@@ -187,13 +187,100 @@ class AccountMove(models.Model):
         """
         Actualiza la tasa cuando cambia la fecha de la factura/asiento.
         IMPORTANTE: Solo actualiza tax_today, NO recalcula campos duales.
+        Para notas de crédito (out_refund, in_refund) con factura asociada,
+        se mantiene estrictamente la tasa de la fecha de la factura original.
         """
         for rec in self:
+            if rec.move_type in ('out_refund', 'in_refund') and rec.reversed_entry_id:
+                orig = rec.reversed_entry_id
+                fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                tasa_orig = orig.tax_today or rec._get_tasa_usd_by_date(fecha_orig, rec.company_id)
+                if tasa_orig and rec.tax_today != tasa_orig:
+                    rec.tax_today = tasa_orig
+                rec.tax_today_edited = True
+                continue
+
             if not rec.tax_today_edited:
                 fecha = rec._fecha_para_tax_today()
                 tasa = rec._get_tasa_usd_by_date(fecha, rec.company_id)
                 if tasa and tasa > 0 and tasa != rec.tax_today:
                     rec.tax_today = tasa
+
+    @api.onchange('reversed_entry_id')
+    def _onchange_reversed_entry_id(self):
+        """
+        Al asociar una factura original a una nota de crédito,
+        hereda exactamente la tasa de cambio de la fecha de la factura original y moneda de la factura original,
+        sin recalcular importes con la tasa del día.
+        """
+        for rec in self:
+            if rec.move_type in ('out_refund', 'in_refund') and rec.reversed_entry_id:
+                orig = rec.reversed_entry_id
+                fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                tasa_orig = orig.tax_today or rec._get_tasa_usd_by_date(fecha_orig, rec.company_id)
+                if tasa_orig:
+                    rec.tax_today = tasa_orig
+                    rec.tax_today_edited = True
+                if orig.currency_id and rec.currency_id != orig.currency_id:
+                    rec.currency_id = orig.currency_id
+                if hasattr(rec, 'trm_invoice'):
+                    rec.trm_invoice = True
+                # Sincronizar tasa en líneas y recalcular valores de referencia
+                tasa = rec.tax_today if rec.tax_today > 0 else 1.0
+                for line in rec.line_ids:
+                    line.tax_today = rec.tax_today
+                    line._compute_currency_rate()
+                    if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
+                        if 'ref_unit' in line._fields and tasa > 0:
+                            line.ref_unit = round(line.price_unit / tasa, 2)
+                            line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
+                    line._debit_usd()
+                    line._credit_usd()
+                    line._compute_balance_usd()
+                rec._amount_all_usd()
+
+    def _reverse_move_vals(self, default_values, cancel=True):
+        move_vals = super()._reverse_move_vals(default_values, cancel=cancel)
+        if self.move_type in ('out_invoice', 'in_invoice'):
+            # La nota de crédito debe usar la misma tasa de cambio de la fecha de la factura original
+            fecha_orig = self._fecha_para_tax_today() if hasattr(self, '_fecha_para_tax_today') else (self.invoice_date or self.date)
+            tasa_orig = self.tax_today or self._get_tasa_usd_by_date(fecha_orig, self.company_id)
+            if tasa_orig:
+                move_vals['tax_today'] = tasa_orig
+                move_vals['tax_today_edited'] = True
+            if self.currency_id:
+                move_vals['currency_id'] = self.currency_id.id
+            if hasattr(self, 'trm_invoice'):
+                move_vals['trm_invoice'] = True
+        return move_vals
+
+    def _reverse_moves(self, default_values_list=None, cancel=False):
+        reverse_moves = super()._reverse_moves(default_values_list=default_values_list, cancel=cancel)
+        for orig_move, rev_move in zip(self, reverse_moves):
+            if (orig_move.move_type == 'out_invoice' and rev_move.move_type == 'out_refund') or \
+               (orig_move.move_type == 'in_invoice' and rev_move.move_type == 'in_refund'):
+                fecha_orig = orig_move._fecha_para_tax_today() if hasattr(orig_move, '_fecha_para_tax_today') else (orig_move.invoice_date or orig_move.date)
+                tasa_orig = orig_move.tax_today or orig_move._get_tasa_usd_by_date(fecha_orig, orig_move.company_id)
+                if tasa_orig:
+                    rev_move.tax_today = tasa_orig
+                    rev_move.tax_today_edited = True
+                if orig_move.currency_id and rev_move.currency_id != orig_move.currency_id:
+                    rev_move.currency_id = orig_move.currency_id
+                if hasattr(rev_move, 'trm_invoice'):
+                    rev_move.trm_invoice = True
+
+                for line in rev_move.line_ids:
+                    line.tax_today = tasa_orig
+                    line._compute_currency_rate()
+                    if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
+                        if 'ref_unit' in line._fields and tasa_orig > 0:
+                            line.ref_unit = round(line.price_unit / tasa_orig, 2)
+                            line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
+                    line._debit_usd()
+                    line._credit_usd()
+                    line._compute_balance_usd()
+                rev_move._amount_all_usd()
+        return reverse_moves
     
     def action_recalcular_campos_duales(self):
         """
@@ -226,6 +313,25 @@ class AccountMove(models.Model):
             }
         }
 
+    @api.model
+    def default_get(self, default_fields):
+        res = super().default_get(default_fields)
+        move_type = res.get('move_type') or self.env.context.get('default_move_type')
+        reversed_id = res.get('reversed_entry_id') or self.env.context.get('default_reversed_entry_id')
+        if move_type in ('out_refund', 'in_refund') and reversed_id:
+            orig = self.env['account.move'].browse(reversed_id)
+            if orig.exists():
+                fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                tasa_orig = orig.tax_today or self._get_tasa_usd_by_date(fecha_orig, orig.company_id)
+                if tasa_orig:
+                    res['tax_today'] = tasa_orig
+                    res['tax_today_edited'] = True
+                if orig.currency_id and 'currency_id' not in res:
+                    res['currency_id'] = orig.currency_id.id
+                if hasattr(orig, 'trm_invoice') and 'trm_invoice' not in res:
+                    res['trm_invoice'] = True
+        return res
+
     def _fecha_para_tax_today(self, vals=None):
         if (vals and vals.get('move_type') == 'entry') or (not vals and self.move_type == 'entry'):
             if vals:
@@ -236,25 +342,56 @@ class AccountMove(models.Model):
         return self.invoice_date or self.date
     
     def _get_tasa_usd_by_date(self, fecha, company=None):
+        if not fecha:
+            fecha = fields.Date.today()
         if isinstance(fecha, (fields.Date.__class__,)):
             fecha_str = fields.Date.to_string(fecha)
         else:
             fecha_str = str(fecha)
-        usd = self.env.ref('base.USD')
-        company = company or self.env.company
+        company = company or (self and hasattr(self, 'company_id') and self.company_id) or self.env.company
+        usd = (hasattr(company, 'currency_id_dif') and company.currency_id_dif) or self.env.ref('base.USD', raise_if_not_found=False) or self.env['res.currency'].search([('name', '=', 'USD')], limit=1)
+        if not usd:
+            return 1.0
         tasa = self.env['res.currency.rate'].search([
             ('currency_id', '=', usd.id),
-            ('name', '=', fecha_str),
+            ('name', '<=', fecha_str),
             ('company_id', '=', company.id)
-        ], limit=1)
-        return tasa.inverse_company_rate if tasa else 1.0
+        ], order='name desc, id desc', limit=1)
+        if not tasa:
+            tasa = self.env['res.currency.rate'].search([
+                ('currency_id', '=', usd.id),
+                ('name', '<=', fecha_str),
+            ], order='name desc, id desc', limit=1)
+        if tasa and tasa.inverse_company_rate:
+            return tasa.inverse_company_rate
+        return usd.inverse_rate if (usd and hasattr(usd, 'inverse_rate') and usd.inverse_rate) else 1.0
 
     @api.model_create_multi
     def create(self, vals_list):
         """
         Crear facturas/asientos.
         Dejamos que Odoo cree todo nativamente, solo actualizamos tax_today DESPUÉS.
+        Para notas de crédito de facturas de cliente (out_refund), garantizamos
+        que utilicen la misma tasa de la factura original desde su creación.
         """
+        for vals in vals_list:
+            is_refund = vals.get('move_type') in ('out_refund', 'in_refund') or (
+                not vals.get('move_type') and self.env.context.get('default_move_type') in ('out_refund', 'in_refund')
+            )
+            reversed_id = vals.get('reversed_entry_id') or self.env.context.get('default_reversed_entry_id')
+            if is_refund and reversed_id:
+                orig = self.env['account.move'].browse(reversed_id)
+                if orig.exists():
+                    fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                    tasa_orig = orig.tax_today or self.env['account.move']._get_tasa_usd_by_date(fecha_orig, orig.company_id)
+                    if tasa_orig:
+                        vals['tax_today'] = tasa_orig
+                        vals['tax_today_edited'] = True
+                if orig.exists() and orig.currency_id and 'currency_id' not in vals:
+                    vals['currency_id'] = orig.currency_id.id
+                if hasattr(orig, 'trm_invoice') and 'trm_invoice' not in vals:
+                    vals['trm_invoice'] = True
+
         moves = super().create(vals_list)
         for move, vals in zip(moves, vals_list):
             j = move.journal_id
@@ -273,9 +410,30 @@ class AccountMove(models.Model):
                 })
 
             else:
-                # Documentos normales (facturas/pagos)
+                # Documentos normales (facturas/pagos/notas de credito)
                 if move.move_type in ('out_refund', 'in_refund'):
-                    continue 
+                    if move.reversed_entry_id:
+                        orig = move.reversed_entry_id
+                        fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                        tasa_orig = orig.tax_today or move._get_tasa_usd_by_date(fecha_orig, move.company_id)
+                        if tasa_orig:
+                            if move.tax_today != tasa_orig:
+                                move.with_context(skip_tax_today_update=True).write({
+                                    'tax_today': tasa_orig,
+                                    'tax_today_edited': True,
+                                })
+                            for line in move.line_ids:
+                                line.tax_today = tasa_orig
+                                line._compute_currency_rate()
+                                if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
+                                    if 'ref_unit' in line._fields and tasa_orig > 0:
+                                        line.ref_unit = round(line.price_unit / tasa_orig, 2)
+                                        line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
+                                line._debit_usd()
+                                line._credit_usd()
+                                line._compute_balance_usd()
+                            move._amount_all_usd()
+                    continue
 
                 # Si la tasa no se proporciona en 'vals', la calculamos por fecha inicial
                 if 'tax_today' not in vals:
@@ -319,9 +477,28 @@ class AccountMove(models.Model):
                 _logger.info("[DUAL] write(): move %s (FX diff) -> tasa=0 y dual=0", move.id)
 
             else:
-                # Documentos normales (facturas/pagos)
-                
+                # Documentos normales (facturas/pagos/notas de credito)
                 if move.move_type in ('out_refund', 'in_refund'):
+                    if move.reversed_entry_id:
+                        orig = move.reversed_entry_id
+                        fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                        tasa_orig = orig.tax_today or move._get_tasa_usd_by_date(fecha_orig, move.company_id)
+                        if tasa_orig and ('reversed_entry_id' in vals or (move.tax_today != tasa_orig and 'tax_today' not in vals)):
+                            super(AccountMove, move.with_context(skip_tax_today_update=True)).write({
+                                'tax_today': tasa_orig,
+                                'tax_today_edited': True,
+                            })
+                            for line in move.line_ids:
+                                line.tax_today = tasa_orig
+                                line._compute_currency_rate()
+                                if line.display_type not in ('line_section', 'line_note', 'tax', 'rounding'):
+                                    if 'ref_unit' in line._fields and tasa_orig > 0:
+                                        line.ref_unit = round(line.price_unit / tasa_orig, 2)
+                                        line.subtotal_ref = round(line.ref_unit * line.quantity, 2)
+                                line._debit_usd()
+                                line._credit_usd()
+                                line._compute_balance_usd()
+                            move._amount_all_usd()
                     continue 
 
                 # Definir si se necesita recálculo
