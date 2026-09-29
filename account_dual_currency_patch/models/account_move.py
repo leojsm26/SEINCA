@@ -122,15 +122,18 @@ class AccountMove(models.Model):
         items = vals_list if is_list else [vals_list]
 
         for vals in items:
-            is_out_refund = vals.get('move_type') == 'out_refund' or (
-                not vals.get('move_type') and self.env.context.get('default_move_type') == 'out_refund'
+            is_refund = vals.get('move_type') in ('out_refund', 'in_refund') or (
+                not vals.get('move_type') and self.env.context.get('default_move_type') in ('out_refund', 'in_refund')
             )
             reversed_id = vals.get('reversed_entry_id') or self.env.context.get('default_reversed_entry_id')
-            if is_out_refund and reversed_id:
+            if is_refund and reversed_id:
                 orig = self.env['account.move'].browse(reversed_id)
-                if orig.exists() and orig.tax_today:
-                    vals['tax_today'] = orig.tax_today
-                    vals['tax_today_edited'] = True
+                if orig.exists():
+                    fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                    tasa_orig = orig.tax_today or (hasattr(orig, '_get_tasa_usd_by_date') and orig._get_tasa_usd_by_date(fecha_orig, orig.company_id))
+                    if tasa_orig:
+                        vals['tax_today'] = tasa_orig
+                        vals['tax_today_edited'] = True
                 continue
 
             # Si viene tax_today lo eliminamos para otros documentos normales: nacen sin tasa

@@ -18,9 +18,11 @@ class AccountMoveReversalInherit(models.TransientModel):
 
     def _prepare_default_reversal(self, move):
         default_values = super()._prepare_default_reversal(move)
-        if move.move_type == 'out_invoice':
-            if getattr(move, 'tax_today', False):
-                default_values['tax_today'] = move.tax_today
+        if move.move_type in ('out_invoice', 'in_invoice'):
+            fecha_orig = move._fecha_para_tax_today() if hasattr(move, '_fecha_para_tax_today') else (move.invoice_date or move.date)
+            tasa_orig = getattr(move, 'tax_today', False) or (hasattr(move, '_get_tasa_usd_by_date') and move._get_tasa_usd_by_date(fecha_orig, move.company_id))
+            if tasa_orig:
+                default_values['tax_today'] = tasa_orig
                 default_values['tax_today_edited'] = True
             if getattr(move, 'currency_id', False):
                 default_values['currency_id'] = move.currency_id.id
@@ -60,10 +62,12 @@ class AccountMoveReversalInherit(models.TransientModel):
             new_moves = moves._reverse_moves(default_values_list, cancel=is_cancel_needed)
 
             for new_move in new_moves:
-                if new_move.move_type == 'out_refund' and new_move.reversed_entry_id:
+                if new_move.move_type in ('out_refund', 'in_refund') and new_move.reversed_entry_id:
                     orig = new_move.reversed_entry_id
-                    if orig.tax_today:
-                        new_move.tax_today = orig.tax_today
+                    fecha_orig = orig._fecha_para_tax_today() if hasattr(orig, '_fecha_para_tax_today') else (orig.invoice_date or orig.date)
+                    tasa_orig = orig.tax_today or (hasattr(orig, '_get_tasa_usd_by_date') and orig._get_tasa_usd_by_date(fecha_orig, orig.company_id))
+                    if tasa_orig:
+                        new_move.tax_today = tasa_orig
                         new_move.tax_today_edited = True
                     if orig.currency_id and new_move.currency_id != orig.currency_id:
                         new_move.currency_id = orig.currency_id
