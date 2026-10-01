@@ -8,7 +8,7 @@
     showing the current version of Odoo.
     """,
     'author': 'Tu nombre o empresa',
-    'depends': ['base'],
+    'depends': ['base', 'base_setup'],
     'data': [
         'views/res_config_views.xml',
     ],
