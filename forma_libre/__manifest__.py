@@ -17,6 +17,7 @@
         "report/invoice_report.xml",
         "report/invoice_template.xml",
         'views/account_move_button.xml',
+        'views/res_partner_views.xml',
     ],
     "installable": True,
     "application": False,

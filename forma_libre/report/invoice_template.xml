@@ -45,10 +45,20 @@
                                         <t t-esc="'%0.2f' % (line.quantity or 0.0)"/>
                                     </td>
                                     <td style="border: none; text-align: right; font-size: 9px;">
-                                        <t t-esc="'%0.2f' % (line.price_unit_bs or 0.0)"/>
+                                        <t t-if="doc.partner_id.facturar_en_usd and doc.tax_today">
+                                            <t t-esc="'%0.2f' % (((line.price_unit_bs if line.price_unit_bs else line.price_unit) or 0.0) / doc.tax_today)"/>
+                                        </t>
+                                        <t t-else="">
+                                            <t t-esc="'%0.2f' % (line.price_unit_bs or 0.0)"/>
+                                        </t>
                                     </td>
                                     <td style="border: none; text-align: right; font-size: 9px;">
-                                        <t t-esc="'%0.2f' % ((line.quantity or 0.0) * (line.price_unit_bs or 0.0))"/>
+                                        <t t-if="doc.partner_id.facturar_en_usd and doc.tax_today">
+                                            <t t-esc="'%0.2f' % ((line.quantity or 0.0) * (((line.price_unit_bs if line.price_unit_bs else line.price_unit) or 0.0) / doc.tax_today))"/>
+                                        </t>
+                                        <t t-else="">
+                                            <t t-esc="'%0.2f' % ((line.quantity or 0.0) * (line.price_unit_bs or 0.0))"/>
+                                        </t>
                                     </td>
                                 </tr>
                             </tbody>
@@ -59,15 +69,28 @@
                             <p><strong>No se aceptan devoluciones pasado el mes de la fecha de expedicion</strong></p>
                             <p>
                                 Segun providencia SNAT/2022/000013 de fecha 03/03/2022.
-                                <strong>IGTF 3%:</strong> <t t-esc="'%0.2f' % ((doc.amount_total_bs or 0.0) * 0.03)"/>
+                                <strong>IGTF 3%:</strong> 
+                                <t t-if="doc.partner_id.facturar_en_usd">
+                                    <t t-esc="'%0.2f' % ((doc.amount_total_usd or 0.0) * 0.03)"/>
+                                </t>
+                                <t t-else="">
+                                    <t t-esc="'%0.2f' % ((doc.amount_total_bs or 0.0) * 0.03)"/>
+                                </t>
                             </p>
                         </div>
 
                         <!-- Totales (Derecha) -->
                         <div style="position: fixed; top: 260px; right: 10px; width: 48%; text-align: right; font-size: 9px;">
-                            <p><strong>Subtotal:</strong> <t t-esc="'%0.2f' % (doc.amount_untaxed_bs or 0.0)"/></p>
-                            <p><strong>IVA:</strong> <t t-esc="'%0.2f' % (doc.amount_tax_bs or 0.0)"/></p>
-                            <p><strong>Total:</strong> <t t-esc="'%0.2f' % (doc.amount_total_bs or 0.0)"/></p>
+                            <t t-if="doc.partner_id.facturar_en_usd">
+                                <p><strong>Subtotal (USD):</strong> <t t-esc="'%0.2f' % (doc.amount_untaxed_usd or 0.0)"/></p>
+                                <p><strong>IVA (USD):</strong> <t t-esc="'%0.2f' % (doc.amount_tax_usd or 0.0)"/></p>
+                                <p><strong>Total (USD):</strong> <t t-esc="'%0.2f' % (doc.amount_total_usd or 0.0)"/></p>
+                            </t>
+                            <t t-else="">
+                                <p><strong>Subtotal:</strong> <t t-esc="'%0.2f' % (doc.amount_untaxed_bs or 0.0)"/></p>
+                                <p><strong>IVA:</strong> <t t-esc="'%0.2f' % (doc.amount_tax_bs or 0.0)"/></p>
+                                <p><strong>Total:</strong> <t t-esc="'%0.2f' % (doc.amount_total_bs or 0.0)"/></p>
+                            </t>
                         </div>
 
                     </main>
