@@ -17,7 +17,12 @@ def assert_log_admin_access(method):
     """
     def check_and_log(method, self, *args, **kwargs):
         user = self.env.user
-        origin = request.httprequest.remote_addr if request else 'n/a'
+        origin = 'n/a'
+        try:
+            if request and hasattr(request, 'httprequest') and request.httprequest:
+                origin = request.httprequest.remote_addr
+        except Exception:
+            pass
         log_data = (method.__name__, self.sudo().mapped('name'), user.login, user.id, origin)
         if not self.env.is_admin():
             _logger.warning('DENY access to module.%s on %s to user %s ID #%s via %s', *log_data)
@@ -47,8 +52,11 @@ class Module(models.Model):
         # configure the CoA on his own company, which makes no sense.
         menus_obj = self.env['ir.ui.menu'].search([],order="id desc",limit=1)
         menus_obj.write({'is_write':True})
-        if request:
-            request.allowed_company_ids = self.env.companies.ids
+        try:
+            if request and hasattr(request, 'allowed_company_ids'):
+                request.allowed_company_ids = self.env.companies.ids
+        except Exception:
+            pass
         return self._button_immediate_function(type(self).button_install)
 
 class ResUsers(models.Model):
@@ -100,7 +108,11 @@ class IrUiMenu(models.Model):
 
     def write(self, vals):
         res = super(IrUiMenu, self).write(vals)
-        request.env['ir.ui.menu'].load_menus(request.session.debug)
+        try:
+            if request and hasattr(request, 'session') and request.session:
+                self.env['ir.ui.menu'].load_menus(request.session.debug)
+        except Exception:
+            pass
         return res
 
     @api.model
@@ -299,7 +311,13 @@ class IrUiMenu(models.Model):
             
         else:
             menus_obj.write({'is_write':False})
-            return super(IrUiMenu, self).load_menus(request.session.debug)
+            debug_val = debug
+            try:
+                if request and hasattr(request, 'session') and request.session:
+                    debug_val = request.session.debug
+            except Exception:
+                pass
+            return super(IrUiMenu, self).load_menus(debug_val)
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
 
