@@ -60,56 +60,80 @@ class SaleOrderLine(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         """
-        Override create para forzar recálculo de ref y ref_unit en imports masivos.
+        Override create para evitar que el inverse de ref_unit sobreescriba price_unit al guardar.
         """
-        lines = super().create(vals_list)
-        
-        # Forzar flush para asegurar que price_subtotal se compute
-        lines.flush_model()
-        
-        # Invalidar caché y recomputar los campos REF
-        lines.invalidate_recordset(['price_subtotal'])
-        lines._compute_ref_currency()
-        lines._compute_ref()
-        lines._compute_ref_unit()
-        
+        clean_vals_list = []
+        for vals in vals_list:
+            vals_copy = dict(vals)
+            # Si se envía price_unit de forma explícita, damos prioridad a price_unit
+            if 'price_unit' in vals_copy and 'ref_unit' in vals_copy:
+                vals_copy.pop('ref_unit', None)
+            clean_vals_list.append(vals_copy)
+
+        lines = super(SaleOrderLine, self.with_context(skip_ref_unit_inverse=True)).create(clean_vals_list)
         return lines
 
     def write(self, vals):
         """
-        Override write para recomputar ref/ref_unit cuando cambian campos relevantes.
+        Override write para evitar que el inverse de ref_unit sobreescriba price_unit al guardar.
         """
-        res = super().write(vals)
-        
-        # Detectar si hubo cambios en campos que afectan el cálculo
-        trigger_fields = {
-            'price_unit', 'product_uom_qty', 'discount', 'tax_id', 
-            'order_id', 'product_id'
-        }
-        
-        if set(vals.keys()) & trigger_fields:
-            # Forzar flush y recálculo
-            self.flush_model()
-            self.invalidate_recordset(['price_subtotal'])
-            self._compute_ref_currency()
-            self._compute_ref()
-            self._compute_ref_unit()
-        
-        return res
+        if 'price_unit' in vals:
+            vals_clean = dict(vals)
+            vals_clean.pop('ref_unit', None)
+            return super(SaleOrderLine, self.with_context(skip_ref_unit_inverse=True)).write(vals_clean)
+
+        return super().write(vals)
 
     @api.onchange('price_unit', 'product_uom_qty', 'discount', 'tax_id', 'order_id', 'product_id')
     def _onchange_ref(self):
         """
-        Onchange para actualizar ref y ref_unit en tiempo real en la UI.
+        Onchange para actualizar ref y ref_unit en tiempo real en la UI cuando cambia price_unit.
         """
         for line in self:
-            # Forzar recálculo de moneda REF si es necesario
             if not line.order_currency_ref_id:
                 line._compute_ref_currency()
-            
-            # Recalcular ambos campos
             line._compute_ref_unit()
             line._compute_ref()
+
+    @api.onchange('ref_unit')
+    def _onchange_ref_unit(self):
+        """
+        Onchange cuando el usuario edita directamente REF Unit en la interfaz.
+        Calcula el price_unit equivalente sin provocar rebotes.
+        """
+        for line in self:
+            if line.ref_unit in (False, None):
+                continue
+            order = line.order_id
+            target_currency = line.order_currency_ref_id
+            if not order or not target_currency:
+                continue
+
+            order_currency = order.currency_id
+            company = order.company_id
+            date_order = order.date_order or fields.Date.context_today(order)
+
+            try:
+                # Comprobar si el price_unit actual ya genera este ref_unit
+                current_ref = order_currency._convert(
+                    line.price_unit or 0.0,
+                    target_currency,
+                    company,
+                    date_order,
+                )
+                if abs(current_ref - line.ref_unit) < 0.0001:
+                    continue
+
+                new_price_unit = target_currency._convert(
+                    line.ref_unit,
+                    order_currency,
+                    company,
+                    date_order,
+                )
+                line.price_unit = order_currency.round(new_price_unit) if order_currency else new_price_unit
+                line._compute_ref()
+            except Exception:
+                pass
 
     @api.depends('price_subtotal', 'order_id.currency_id', 'order_id.company_id.currency_id', 'order_id.date_order')
     def _compute_ref(self):
@@ -123,7 +147,6 @@ class SaleOrderLine(models.Model):
         - Otros casos → REF = 0.0
         """
         for line in self:
-            # valor por defecto
             line.ref = 0.0
             order = line.order_id
             target_currency = line.order_currency_ref_id
@@ -154,13 +177,7 @@ class SaleOrderLine(models.Model):
     def _compute_ref_unit(self):
         """
         Cálculo de REF Unit ($):
-
-        Lógica idéntica a _compute_ref, pero aplicada a price_unit:
-        - Si la orden está en USD, price_unit viene en USD;
-          REF Unit = USD * tasa_USD→VEF
-        - Si la orden está en VEF, price_unit viene en VEF;
-          REF Unit = VEF / tasa_USD→VEF
-        - Otros casos → REF Unit = 0.0
+        Mantiene 4 decimales de precisión según definición del campo.
         """
         for line in self:
             line.ref_unit = 0.0
@@ -187,9 +204,16 @@ class SaleOrderLine(models.Model):
             except Exception:
                 refu = 0.0
 
-            line.ref_unit = target_currency.round(refu) if target_currency else refu
+            line.ref_unit = round(refu, 4) if refu else 0.0
 
     def _inverse_ref_unit(self):
+        """
+        Inverse para actualizar price_unit solo cuando el usuario cambia ref_unit.
+        Protegido contra ciclos de redondeo.
+        """
+        if self.env.context.get('skip_ref_unit_inverse'):
+            return
+
         for line in self:
             order = line.order_id
             target_currency = line.order_currency_ref_id
@@ -205,6 +229,16 @@ class SaleOrderLine(models.Model):
             date_order = order.date_order or fields.Date.context_today(order)
 
             try:
+                # Comprobar si el price_unit actual ya equivale a este ref_unit
+                current_ref = order_currency._convert(
+                    line.price_unit or 0.0,
+                    target_currency,
+                    company,
+                    date_order,
+                )
+                if abs(current_ref - ref_unit) < 0.0001:
+                    continue
+
                 price_unit = target_currency._convert(
                     ref_unit,
                     order_currency,
