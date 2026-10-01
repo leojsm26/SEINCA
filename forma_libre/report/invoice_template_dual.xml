@@ -79,7 +79,7 @@
                                         <t t-esc="'%0.2f' % (line.quantity or 0.0)"/>
                                     </td>
                                     <td style="border: none; text-align: right; font-size: 9px;">
-                                        <t t-if="doc.partner_id.facturar_en_usd and doc.tax_today">
+                                        <t t-if="doc.tax_today and (doc.currency_id == doc.company_id.currency_id or doc.currency_id.name != 'USD')">
                                             <t t-esc="'{:,.2f}'.format(line.price_unit / doc.tax_today).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                         </t>
                                         <t t-else="">
@@ -90,7 +90,7 @@
                                         <t t-esc="line.discount"/>
                                     </td>
                                     <td style="border: none; text-align: right; font-size: 9px;">
-                                        <t t-if="doc.partner_id.facturar_en_usd and doc.tax_today">
+                                        <t t-if="doc.tax_today and (doc.currency_id == doc.company_id.currency_id or doc.currency_id.name != 'USD')">
                                             <t t-esc="'{:,.2f}'.format(line.price_subtotal / doc.tax_today).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                         </t>
                                         <t t-else="">
@@ -102,262 +102,112 @@
                         </table>
 
     
-                        <!-- Bloque de Montos en Bolívares y Dólares -->
+                        <!-- Bloque de Montos en Dólares -->
                         <div style="position: fixed; top: 440px; width: 95%; text-align: center; font-size: 9px; border: 1px solid black; padding: 10px;">
-                            <t t-if="doc.partner_id.facturar_en_usd">
-                                <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
-                                    <thead>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
+                                <thead>
+                                    <tr>
+                                        <th colspan="2" style="text-align: center;">Monto en Dólares (USD.)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Sub-Total -->
+                                    <tr>
+                                        <td style="text-align: left; width: 60%;"><strong>Sub-Total:</strong></td>
+                                        <td style="text-align: right; width: 40%;">
+                                            <t t-esc="'{:,.2f}'.format((doc.amount_untaxed_usd or 0.0) + (doc.tax_exento_usd or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                        </td>
+                                    </tr>
+
+                                    <!-- Total Exento -->
+                                    <t t-if="(doc.tax_exento_usd or 0.0) != 0.0">
                                         <tr>
-                                            <th colspan="2" style="text-align: center;">Monto en Dólares (US$.)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Sub-Total -->
-                                        <tr>
-                                            <td style="text-align: left;"><strong>Sub-Total:</strong></td>
+                                            <td style="text-align: left;"><strong>Total Exento:</strong></td>
                                             <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format((doc.amount_untaxed_usd or 0.0) + (doc.tax_exento_usd or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                                <t t-esc="'{:,.2f}'.format(doc.tax_exento_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                             </td>
                                         </tr>
+                                    </t>
 
-                                        <!-- Total Exento -->
-                                        <t t-if="(doc.tax_exento_usd or 0.0) != 0.0">
-                                            <tr>
-                                                <td style="text-align: left;"><strong>Total Exento:</strong></td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_exento_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
+                                    <!-- Base Imponible -->
+                                    <tr>
+                                        <td style="text-align: left;"><strong>Base Imponible:</strong></td>
+                                        <td style="text-align: right;">
+                                            <t t-esc="'{:,.2f}'.format(doc.amount_untaxed_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                        </td>
+                                    </tr>
 
-                                        <!-- Base Imponible -->
+                                    <!-- IVA 8% -->
+                                    <t t-if="(doc.tax_8_usd or 0.0) != 0.0">
                                         <tr>
-                                            <td style="text-align: left;"><strong>Base Imponible:</strong></td>
+                                            <td style="text-align: left;">
+                                                <strong>IVA 8% Sobre 
+                                                    <t t-esc="'{:,.2f}'.format(doc.base_8_usd if doc.base_8_usd != 0.0 else doc.amount_untaxed_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
+                                                </strong>
+                                            </td>
                                             <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format(doc.amount_untaxed_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                                <t t-esc="'{:,.2f}'.format(doc.tax_8_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                             </td>
                                         </tr>
+                                    </t>
 
-                                        <!-- IVA 8% -->
-                                        <t t-if="doc.tax_8_usd != 0">
-                                            <tr>
-                                                <td style="text-align: left;">
-                                                    <strong>IVA 8% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_8_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_8_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-                                        <!-- IVA 16% -->
-                                        <t t-if="doc.tax_16_usd != 0">
-                                            <tr>
-                                                <td style="text-align: left;">
-                                                    <strong>IVA 16% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_16_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_16_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-                                        <!-- IVA 31% -->
-                                        <t t-if="doc.tax_31_usd != 0">
-                                            <tr>
-                                                <td style="text-align: left;">
-                                                    <strong>IVA 15% + 16% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_31_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_31_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-                                        <!-- Total General -->
+                                    <!-- IVA 16% -->
+                                    <t t-if="(doc.tax_16_usd or 0.0) != 0.0 or (doc.amount_tax_usd or 0.0) != 0.0">
                                         <tr>
-                                            <td style="text-align: left;"><strong>Total General (US$.):</strong></td>
+                                            <td style="text-align: left;">
+                                                <strong>IVA 16% Sobre 
+                                                    <t t-esc="'{:,.2f}'.format(doc.base_16_usd if doc.base_16_usd &gt; 1.0 else (doc.amount_untaxed_usd or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
+                                                </strong>
+                                            </td>
                                             <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format(doc.amount_total_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                                <t t-esc="'{:,.2f}'.format(doc.tax_16_usd if doc.tax_16_usd != 0.0 else (doc.amount_tax_usd or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                             </td>
                                         </tr>
+                                    </t>
 
+                                    <!-- IVA 31% -->
+                                    <t t-if="(doc.tax_31_usd or 0.0) != 0.0">
                                         <tr>
-                                            <td colspan="2" style="text-align: left; padding-top: 10px;">
-                                                <p style="margin: 0;"><strong>
-                                                    En caso de pagar la totalidad de la factura o porción con moneda extranjera, se cobrará el 3% de IGTF según Gaceta Oficial 42.339 de fecha 25/02/2022
-                                                </strong></p>
-
-                                                <p style="margin: 0; margin-top: 8px;"><strong>
-                                                    Tasa Vigente al <span t-field="doc.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}'/> según el BCV:
-                                                    <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/>
-                                                </strong></p>
-                                                
-                                                <hr style="margin: 10px 0;" />
-                                                <p style="margin: 0;">
-                                                    FACTURA SEGUN CONVENIO CAMBIARIO N°1 GOE N°6.405 DE FECHA 07/09/2018. FACTURA CALCULADA A LA TASA BCV ACTUAL Bs. POR US$
-                                                    DOLAR <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/> PARA EFECTOS DEL IVA DE CONFORMIDAD CON LO ESTABLECIDO EN EL ARTICULO 116 DEL BCV.
-                                                    PAGARA EN BOLIVARES A LA TASA BCV DEL DIA.
-                                                </p>
+                                            <td style="text-align: left;">
+                                                <strong>IVA 15% + 16% Sobre 
+                                                    <t t-esc="'{:,.2f}'.format(doc.base_31_usd if doc.base_31_usd != 0.0 else doc.amount_untaxed_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
+                                                </strong>
                                             </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </t>
-                            <t t-else="">
-                                <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
-                                    <thead>
-                                        <tr>
-                                            <th colspan="2" style="border-right: 1px solid black;">Monto en Bolívares (Bs.)</th>
-                                            <th colspan="2">Monto en Dólares (US$.)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Sub-Total -->
-                                        <tr>
-                                            <td><strong>Sub-Total:</strong></td>
-                                            <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                <t t-esc="'{:,.2f}'.format((doc.total_imponible or 0.0) + (doc.tax_exento or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                            </td>
-                                            <td><strong>Sub-Total Ref:</strong></td>
                                             <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format((doc.amount_untaxed_usd or 0.0) + (doc.tax_exento_usd or 0.0)).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                                <t t-esc="'{:,.2f}'.format(doc.tax_31_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
                                             </td>
                                         </tr>
+                                    </t>
 
-                                        <!-- Total Exento -->
-                                        <t t-if="(doc.tax_exento or 0.0) != 0.0 or (doc.tax_exento_usd or 0.0) != 0.0">
-                                            <tr>
-                                                <td><strong>Total Exento:</strong></td>
-                                                <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_exento or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                                <td><strong>Total Exento Ref:</strong></td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_exento_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
+                                    <!-- Total General -->
+                                    <tr>
+                                        <td style="text-align: left;"><strong>Total General (USD.):</strong></td>
+                                        <td style="text-align: right;">
+                                            <t t-esc="'{:,.2f}'.format(doc.amount_total_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
+                                        </td>
+                                    </tr>
 
-                                        <!-- Base Imponible -->
-                                        <tr>
-                                            <td><strong>Base Imponible:</strong></td>
-                                            <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                <t t-esc="'{:,.2f}'.format(doc.total_imponible or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                            </td>
-                                            <td><strong>Base Imponible Ref:</strong></td>
-                                            <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format(doc.amount_untaxed_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                            </td>
-                                        </tr>
+                                    <tr>
+                                        <td colspan="2" style="text-align: left; padding-top: 10px;">
+                                            <p style="margin: 0;"><strong>
+                                                En caso de pagar la totalidad de la factura o porción con moneda extranjera, se cobrará el 3% de IGTF según Gaceta Oficial 42.339 de fecha 25/02/2022
+                                            </strong></p>
 
-                                        <!-- IVA 8% -->
-                                        <t t-if="doc.tax_8 != 0 or doc.tax_8_usd != 0">
-                                            <tr>
-                                                <td>
-                                                    <strong>IVA 8% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_8 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_8 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                                <td>
-                                                    <strong>IVA 8% Ref Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_8_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>:
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_8_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-                                        <!-- IVA 16% -->
-                                        <t t-if="doc.tax_16 != 0 or doc.tax_16_usd != 0">
-                                            <tr>
-                                                <td>
-                                                    <strong>IVA 16% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_16 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_16 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                                <td>
-                                                    <strong>IVA 16% Ref Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_16_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>:
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_16_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-
-                                        <!-- IVA 31% -->
-                                        <t t-if="doc.tax_31 != 0 or doc.tax_31_usd != 0">
-                                            <tr>
-                                                <td>
-                                                    <strong>IVA 15% + 16% Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_31 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/> :
-                                                    </strong>
-                                                </td>
-                                                <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_31 or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                                <td>
-                                                    <strong>IVA 15% + 16% Ref Sobre 
-                                                        <t t-esc="'{:,.2f}'.format(doc.base_31_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>:
-                                                    </strong>
-                                                </td>
-                                                <td style="text-align: right;">
-                                                    <t t-esc="'{:,.2f}'.format(doc.tax_31_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                                </td>
-                                            </tr>
-                                        </t>
-
-                                        <!-- Total General -->
-                                        <tr>
-                                            <td><strong>Total General Bs.:</strong></td>
-                                            <td style="border-right: 1px solid black; text-align: right; padding-right: 10px;">
-                                                <t t-esc="'{:,.2f}'.format(doc.amount_total or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                            </td>
-                                            <td><strong>Total General Ref:</strong></td>
-                                            <td style="text-align: right;">
-                                                <t t-esc="'{:,.2f}'.format(doc.amount_total_usd or 0.0).replace(',', 'X').replace('.', ',').replace('X', '.')"/>
-                                            </td>
-                                        </tr>
-
-                                        <tr>
-                                            <td colspan="4" style="text-align: left; padding-top: 10px;">
-                                                <p style="margin: 0;"><strong>
-                                                    En caso de pagar la totalidad de la factura o porción con moneda extranjera, se cobrará el 3% de IGTF según Gaceta Oficial 42.339 de fecha 25/02/2022
-                                                </strong></p>
-
-                                                <p style="margin: 0; margin-top: 8px;"><strong>
-                                                    Tasa Vigente al <span t-field="doc.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}'/> según el BCV:
-                                                    <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/>
-                                                </strong></p>
-                                                
-                                                <hr style="margin: 10px 0;" />
-                                                <p style="margin: 0;">
-                                                    FACTURA SEGUN CONVENIO CAMBIARIO N°1 GOE N°6.405 DE FECHA 07/09/2018. FACTURA CALCULADA A LA TASA BCV ACTUAL Bs. POR US$
-                                                    DOLAR <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/> PARA EFECTOS DEL IVA DE CONFORMIDAD CON LO ESTABLECIDO EN EL ARTICULO 116 DEL BCV.
-                                                    PAGARA EN BOLIVARES A LA TASA BCV DEL DIA.
-                                                </p>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </t>
+                                            <p style="margin: 0; margin-top: 8px;"><strong>
+                                                Tasa Vigente al <span t-field="doc.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}'/> según el BCV:
+                                                <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/>
+                                            </strong></p>
+                                            
+                                            <hr style="margin: 10px 0;" />
+                                            <p style="margin: 0;">
+                                                FACTURA SEGUN CONVENIO CAMBIARIO N°1 GOE N°6.405 DE FECHA 07/09/2018. FACTURA CALCULADA A LA TASA BCV ACTUAL Bs. POR USD
+                                                DOLAR <span t-field="doc.tax_today" t-options='{"widget": "float", "precision": 4}'/> PARA EFECTOS DEL IVA DE CONFORMIDAD CON LO ESTABLECIDO EN EL ARTICULO 116 DEL BCV.
+                                                PAGARA EN BOLIVARES A LA TASA BCV DEL DIA.
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                         <!-- Indicador Original o Copia -->
                         <div style="width: 100%; text-align: center; margin-top: 20px; font-size: 12px; position: relative;">
