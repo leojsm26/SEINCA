@@ -1,15 +1,14 @@
 <odoo>
     <data>
         <!-- Definir el reporte -->
-        <report
-            id="action_report_invoice_custom"
-            string="Factura Fiscal"
-            model="account.move"
-            report_type="qweb-pdf"
-            file="forma_libre.report_invoice_template"
-            name="forma_libre.report_invoice_template"
-            print_report_name="'Factura Fiscal - %s' % (object.name)"
-            paperformat="fiscal_format"
-        />
+        <record id="action_report_invoice_custom" model="ir.actions.report">
+            <field name="name">Factura Fiscal</field>
+            <field name="model">account.move</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">forma_libre.report_invoice_template</field>
+            <field name="report_file">forma_libre.report_invoice_template</field>
+            <field name="print_report_name">'Factura Fiscal - %s' % (object.name)</field>
+            <field name="paperformat_id" ref="forma_libre.fiscal_format"/>
+        </record>
     </data>
 </odoo>
